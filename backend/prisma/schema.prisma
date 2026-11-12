@@ -1,0 +1,198 @@
+// Prisma Schema для проекта "Рукодельница"
+// Документация: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Перечисления (Enums)
+
+enum UserRole {
+  USER
+  MASTER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING    // Создан, ожидает оплаты (не используется в MVP с имитацией)
+  PAID       // Оплачен (устанавливается автоматически после имитации оплаты)
+  PROCESSING // В обработке
+  SHIPPED    // Отправлен
+  DELIVERED  // Доставлен
+  CANCELLED  // Отменён
+}
+
+enum ProductStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProductOptionType {
+  ITEM
+  PATTERN
+  VIDEO
+}
+
+enum Difficulty {
+  BEGINNER
+  EASY
+  MEDIUM
+  ADVANCED
+  EXPERT
+}
+
+// Модели (Таблицы)
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String
+  password  String   // Хеш пароля (bcrypt)
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Связи
+  orders  Order[]
+  accesses Access[]
+  products Product[]
+
+  @@map("users") // Имя таблицы в БД
+}
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  slug        String   @unique // URL-friendly идентификатор
+  description String?
+  createdAt   DateTime @default(now())
+
+  // Связи
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          Int         @id @default(autoincrement())
+  name        String
+  description String      @db.Text
+  categoryId  Int
+  imageUrl    String
+  ownerId     Int
+  difficulty  Difficulty @default(BEGINNER)
+  status      ProductStatus @default(PENDING)
+  moderationNote String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Связи
+  category   Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  owner      User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  options    ProductOption[]
+  orderItems OrderItem[]
+  accesses   Access[]
+
+  @@index([categoryId])
+  @@index([ownerId])
+  @@index([status])
+  @@map("products")
+}
+
+model ProductOption {
+  id        Int               @id @default(autoincrement())
+  productId Int
+  type      ProductOptionType
+  price     Decimal           @db.Decimal(10, 2)
+  stock     Int?
+  fileUrl   String?
+  createdAt DateTime          @default(now())
+
+  product   Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems OrderItemOption[]
+  accesses  Access[]
+
+  @@unique([productId, type])
+  @@index([productId])
+  @@map("product_options")
+}
+
+model Order {
+  id              Int         @id @default(autoincrement())
+  userId          Int
+  status          OrderStatus @default(PAID) // MVP: сразу "оплачен"
+  totalPrice      Decimal     @db.Decimal(10, 2)
+  customerName    String
+  customerPhone   String
+  deliveryAddress String?     // Для физических товаров
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Связи
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+  accesses   Access[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id          Int     @id @default(autoincrement())
+  orderId     Int
+  productId   Int
+  quantity    Int      @default(1)
+  price       Decimal  @db.Decimal(10, 2)
+  productName String
+
+  // Связи
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  options OrderItemOption[]
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model OrderItemOption {
+  id              Int      @id @default(autoincrement())
+  orderItemId     Int
+  productOptionId Int
+  optionType      ProductOptionType
+  optionPrice     Decimal  @db.Decimal(10, 2)
+
+  orderItem    OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  productOption ProductOption @relation(fields: [productOptionId], references: [id], onDelete: Restrict)
+
+  @@unique([orderItemId, productOptionId])
+  @@map("order_item_options")
+}
+
+model Access {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  productId Int
+  productOptionId Int
+  orderId   Int
+  grantedAt DateTime @default(now())
+
+  // Связи
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productOption ProductOption @relation(fields: [productOptionId], references: [id], onDelete: Cascade)
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productOptionId])
+  @@index([userId])
+  @@index([productId])
+  @@map("accesses")
+}

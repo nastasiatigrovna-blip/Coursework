@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: rukodelniza
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install --prefix backend && npm install --prefix frontend && npm run prisma:generate --prefix backend && npm run build --prefix backend && npm run build --prefix frontend
+    startCommand: npm run deploy --prefix backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rukodelniza-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_MASTER_PASSWORD
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.16.0
+
+databases:
+  - name: rukodelniza-db
+    plan: free
+    region: frankfurt
+    databaseName: rukodelniza
+    user: rukodelniza
